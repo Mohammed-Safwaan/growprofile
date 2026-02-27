@@ -12,6 +12,7 @@
  *   npx tsx lib/workers/dm-sender.worker.ts
  */
 
+import 'dotenv/config'
 import { Worker, Job, Queue } from 'bullmq'
 import { PrismaClient } from '../../lib/generated/prisma/client.js'
 import { PrismaPg } from '@prisma/adapter-pg'

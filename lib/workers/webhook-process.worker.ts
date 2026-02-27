@@ -10,6 +10,7 @@
  *   npx tsx lib/workers/webhook-process.worker.ts
  */
 
+import 'dotenv/config'
 import { Worker, Job } from 'bullmq'
 import { PrismaClient } from '../../lib/generated/prisma/client.js'
 import { PrismaPg } from '@prisma/adapter-pg'
