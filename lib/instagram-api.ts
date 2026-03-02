@@ -239,13 +239,13 @@ export async function fetchMediaComments(
     : `${IG_API_BASE}/${mediaId}/comments?fields=id,text,from,timestamp&limit=50&access_token=${accessToken}`
 
   while (url && allComments.length < limit) {
-    const res = await fetch(url)
+    const res: Response = await fetch(url)
     if (!res.ok) {
       const err = await res.text()
       throw new Error(`IG comments fetch failed (${res.status}): ${err}`)
     }
 
-    const data = await res.json()
+    const data: any = await res.json()
     if (data.data) {
       const normalized = (data.data as Array<Record<string, unknown>>).map((comment) => {
         const from = (comment.from as Record<string, unknown> | undefined) || undefined

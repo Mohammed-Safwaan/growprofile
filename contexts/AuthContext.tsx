@@ -115,6 +115,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const dbUser = await syncUserWithBackend(fbUser)
       setUser(dbUser)
+      if (dbUser) {
+        // Set a cookie so the Edge middleware can detect auth state
+        document.cookie = `auth-session=1; path=/; max-age=3600; SameSite=Lax`
+        if (dbUser.role === 'ADMIN' || dbUser.role === 'SUPER_ADMIN') {
+          document.cookie = `user-role=${dbUser.role}; path=/; max-age=3600; SameSite=Lax`
+        }
+      }
     } catch (error) {
       console.error('Profile sync failed:', error)
     } finally {
@@ -191,6 +198,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await signOut(auth)
     setUser(null)
     setFirebaseUser(null)
+    // Clear auth cookies
+    document.cookie = 'auth-session=; path=/; max-age=0'
+    document.cookie = 'user-role=; path=/; max-age=0'
   }
 
   const isAdmin = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN'

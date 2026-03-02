@@ -31,7 +31,7 @@ export function WelcomeCard() {
           </p>
         </div>
         
-        <div className="flex flex-col sm:flex-row gap-3">
+        <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
           {igAccount ? (
             <Button asChild size="lg" className="bg-white text-primary hover:bg-white/90 shadow-xl">
               <Link href="/dashboard/apps/autodm" className="gap-2">
@@ -47,7 +47,7 @@ export function WelcomeCard() {
               </Link>
             </Button>
           )}
-          <Button asChild size="lg" variant="outline" className="border-white/30 text-white hover:bg-white/10">
+          <Button asChild size="lg" variant="secondary" className="shadow-lg">
             <Link href="/dashboard/apps/autodm" className="gap-2">
               View Campaigns <ArrowRight className="w-4 h-4" />
             </Link>

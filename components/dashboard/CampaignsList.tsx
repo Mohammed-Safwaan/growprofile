@@ -13,7 +13,7 @@ interface Campaign {
   status: string
   triggerKeywords: string[]
   createdAt: string
-  media: Array<{ id: string; igMediaId: string; mediaUrl?: string | null }>
+  media: Array<{ id: string; igMediaId: string; mediaUrl?: string | null; mediaType?: string | null }>
   _count: { interactions: number; leads: number }
 }
 

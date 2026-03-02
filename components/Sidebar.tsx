@@ -27,18 +27,19 @@ const menuItems = [
     submenu: null
   },
   {
+    label: 'Apps',
+    icon: Zap,
+    alwaysExpanded: true,
+    submenu: [
+      { label: 'AutoDM', href: '/dashboard/apps/autodm' }
+    ]
+  },
+  {
     label: 'Growth',
     icon: TrendingUp,
     submenu: [
       { label: 'Audience', href: '/dashboard/growth/audience' },
       { label: 'Insights', href: '/dashboard/growth/insights' }
-    ]
-  },
-  {
-    label: 'Apps',
-    icon: Zap,
-    submenu: [
-      { label: 'AutoDM', href: '/dashboard/apps/autodm' }
     ]
   },
   {
@@ -73,7 +74,7 @@ const menuItems = [
 
 export function Sidebar() {
   const pathname = usePathname()
-  const [expandedMenu, setExpandedMenu] = useState<string | null>(null)
+  const [expandedMenu, setExpandedMenu] = useState<string | null>('Apps')
   const { logout, user } = useAuth()
   const router = useRouter()
 
@@ -117,7 +118,7 @@ export function Sidebar() {
             return (
               <div key={idx}>
                 <button
-                  onClick={() => setExpandedMenu(isExpanded ? null : item.label)}
+                  onClick={() => !item.alwaysExpanded && setExpandedMenu(isExpanded ? null : item.label)}
                   className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all ${
                     isMenuActive
                       ? 'bg-gradient-to-r from-primary/20 to-secondary/20 text-white'
@@ -134,11 +135,13 @@ export function Sidebar() {
                     </div>
                     <span className="font-medium">{item.label}</span>
                   </div>
-                  <ChevronDown
-                    className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-                  />
+                  {!item.alwaysExpanded && (
+                    <ChevronDown
+                      className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                    />
+                  )}
                 </button>
-                {isExpanded && (
+                {(isExpanded || item.alwaysExpanded) && (
                   <div className="ml-4 mt-1 space-y-1">
                     {item.submenu.map((subitem, sidx) => (
                       <Link

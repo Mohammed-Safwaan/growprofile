@@ -105,6 +105,18 @@ export const PATCH = withAuth(async (
     },
   })
 
+  // Send campaign status alert if status changed
+  if (status !== undefined && status !== existing.status) {
+    import('@/lib/email').then(({ sendCampaignAlert }) =>
+      sendCampaignAlert({
+        to: user.email,
+        name: user.name || 'there',
+        campaignName: campaign.name,
+        status,
+      })
+    ).catch((err) => console.error('[campaigns] Failed to send campaign alert:', err))
+  }
+
   // If mediaIds were provided, replace existing media
   if (mediaIds !== undefined) {
     await prisma.campaignMedia.deleteMany({ where: { campaignId: id } })

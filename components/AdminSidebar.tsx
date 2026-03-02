@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { Users, BarChart3, CreditCard, Settings, LogOut, Menu } from 'lucide-react'
+import { Users, BarChart3, CreditCard, Settings, LogOut, Menu, ScrollText, ShieldAlert, Banknote } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
@@ -22,6 +22,21 @@ const menuItems = [
     label: 'Subscriptions',
     href: '/admin/subscriptions',
     icon: CreditCard,
+  },
+  {
+    label: 'Payments',
+    href: '/admin/payments',
+    icon: Banknote,
+  },
+  {
+    label: 'Audit Logs',
+    href: '/admin/audit-logs',
+    icon: ScrollText,
+  },
+  {
+    label: 'Abuse Flags',
+    href: '/admin/abuse-flags',
+    icon: ShieldAlert,
   },
   {
     label: 'Settings',

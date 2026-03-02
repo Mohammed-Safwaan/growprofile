@@ -80,7 +80,7 @@ export function HeroSection() {
                   </div>
                 ))}
               </div>
-              <span>Join <strong className="text-slate-700">2,500+</strong> businesses growing with AutoDM</span>
+              <span>Growing Instagram businesses with <strong className="text-slate-700">AutoDM</strong></span>
             </div>
           </div>
 

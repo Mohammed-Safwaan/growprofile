@@ -1,14 +1,52 @@
 'use client'
 
-import { Copy, Check, Users, DollarSign, TrendingUp } from 'lucide-react'
+import { Copy, Check, Users, DollarSign, TrendingUp, Loader2, Gift } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useAuth } from '@/contexts/AuthContext'
+
+interface ReferralStats {
+  totalReferred: number
+  completedReferrals: number
+  rewardedCount: number
+  pendingRewards: number
+}
+
+interface Referral {
+  id: string
+  name: string
+  date: string
+  status: string
+  rewardApplied: boolean
+}
 
 export default function ReferralPage() {
   const [copied, setCopied] = useState(false)
+  const [referralLink, setReferralLink] = useState('')
+  const [stats, setStats] = useState<ReferralStats | null>(null)
+  const [referrals, setReferrals] = useState<Referral[]>([])
+  const [loading, setLoading] = useState(true)
+  const { authFetch } = useAuth()
 
-  const referralLink = 'https://growprofile.com/ref/abc123xyz'
+  useEffect(() => {
+    async function fetchReferrals() {
+      try {
+        const res = await authFetch('/api/referrals')
+        const data = await res.json()
+        if (data.success) {
+          setReferralLink(data.referralLink || '')
+          setStats(data.stats || null)
+          setReferrals(data.referrals || [])
+        }
+      } catch (err) {
+        console.error('Failed to fetch referral data:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchReferrals()
+  }, [authFetch])
 
   const handleCopy = () => {
     navigator.clipboard.writeText(referralLink)
@@ -16,32 +54,34 @@ export default function ReferralPage() {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  const referrals = [
-    { name: 'Sarah Johnson', date: '2 days ago', status: 'Active', reward: '$29' },
-    { name: 'Mike Chen', date: '1 week ago', status: 'Active', reward: '$29' },
-    { name: 'Emma Wilson', date: '2 weeks ago', status: 'Active', reward: '$29' }
-  ]
-
-  const stats = [
+  const statCards = [
     {
       label: 'Total Referrals',
-      value: '12',
+      value: stats?.totalReferred ?? 0,
       icon: Users,
       color: 'from-primary to-secondary'
     },
     {
-      label: 'Active Subscribers',
-      value: '8',
+      label: 'Completed',
+      value: stats?.completedReferrals ?? 0,
       icon: TrendingUp,
       color: 'from-secondary to-accent'
     },
     {
-      label: 'Lifetime Earnings',
-      value: '$232',
-      icon: DollarSign,
+      label: 'Pending Rewards',
+      value: stats?.pendingRewards ?? 0,
+      icon: Gift,
       color: 'from-accent to-primary'
     }
   ]
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
 
   return (
     <div>
@@ -52,7 +92,7 @@ export default function ReferralPage() {
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-        {stats.map((stat, idx) => {
+        {statCards.map((stat, idx) => {
           const Icon = stat.icon
           return (
             <div key={idx} className="p-6 rounded-xl bg-card border border-border">
@@ -143,22 +183,31 @@ export default function ReferralPage() {
           {/* Recent Referrals */}
           <div className="p-6 rounded-xl bg-card border border-border">
             <h2 className="text-xl font-bold text-foreground mb-6">Recent Referrals</h2>
-            <div className="space-y-4">
-              {referrals.map((ref, idx) => (
-                <div key={idx} className="flex items-center justify-between p-4 bg-secondary/20 rounded-lg border border-border">
-                  <div>
-                    <p className="font-semibold text-foreground">{ref.name}</p>
-                    <p className="text-xs text-muted-foreground">{ref.date}</p>
+            {referrals.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">No referrals yet. Share your link to get started!</p>
+            ) : (
+              <div className="space-y-4">
+                {referrals.map((ref) => (
+                  <div key={ref.id} className="flex items-center justify-between p-4 bg-secondary/20 rounded-lg border border-border">
+                    <div>
+                      <p className="font-semibold text-foreground">{ref.name}</p>
+                      <p className="text-xs text-muted-foreground">{new Date(ref.date).toLocaleDateString()}</p>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <span className={`text-sm px-3 py-1 rounded-full font-medium ${
+                        ref.status === 'completed'
+                          ? 'bg-green-100 text-green-700'
+                          : ref.status === 'rewarded'
+                            ? 'bg-blue-100 text-blue-700'
+                            : 'bg-yellow-100 text-yellow-700'
+                      }`}>
+                        {ref.status}
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-4">
-                    <span className="text-sm px-3 py-1 bg-green-100 text-green-700 rounded-full font-medium">
-                      {ref.status}
-                    </span>
-                    <span className="font-bold text-primary">{ref.reward}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 

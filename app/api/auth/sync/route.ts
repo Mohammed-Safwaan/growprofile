@@ -3,6 +3,7 @@ import { adminAuth } from '@/lib/firebase-admin'
 import prisma from '@/lib/prisma'
 import { createAuditLog } from '@/lib/api-middleware'
 import { PlanType, UserRole } from '@/lib/generated/prisma'
+import { sendWelcomeEmail } from '@/lib/email'
 
 /**
  * POST /api/auth/sync
@@ -148,6 +149,11 @@ export async function POST(request: NextRequest) {
           },
         })
         isNewUser = true
+
+        // Send welcome email (fire & forget)
+        sendWelcomeEmail({ to: email, name: name || 'there' }).catch((err) =>
+          console.error('[auth/sync] Failed to send welcome email:', err)
+        )
 
         // Create a free subscription for the new user
         if (starterPlan) {

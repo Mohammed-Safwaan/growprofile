@@ -1,0 +1,9 @@
+# Docker
+.next/
+node_modules/
+.env
+.env.local
+.git/
+.gitignore
+*.md
+*.log

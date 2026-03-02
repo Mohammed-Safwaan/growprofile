@@ -146,7 +146,7 @@ async function mergeInteractionMetadata(interactionId: string, patch: Interactio
   const current = await getInteractionMetadata(interactionId)
   await prisma.interaction.update({
     where: { id: interactionId },
-    data: { metadata: { ...current, ...patch } },
+    data: { metadata: { ...current, ...patch } as any },
   })
 }
 

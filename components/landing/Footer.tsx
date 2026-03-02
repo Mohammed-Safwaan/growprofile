@@ -1,5 +1,4 @@
 import Link from 'next/link'
-import { Twitter, Linkedin, Instagram } from 'lucide-react'
 import Image from 'next/image'
 
 export function Footer() {
@@ -7,7 +6,7 @@ export function Footer() {
     <footer className="bg-slate-900 text-white">
       {/* Main Footer */}
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-16">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-12">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12">
           {/* Brand */}
           <div className="lg:col-span-2">
             <Link href="/" className="flex items-center gap-3 mb-6">
@@ -26,17 +25,6 @@ export function Footer() {
             <p className="text-slate-400 mb-6 max-w-sm">
               The official Meta-compliant AutoDM platform for Instagram. Turn comments into customers automatically.
             </p>
-            <div className="flex gap-4">
-              <a href="#" className="w-10 h-10 rounded-lg bg-slate-800 hover:bg-primary flex items-center justify-center transition-colors">
-                <Twitter className="w-5 h-5" />
-              </a>
-              <a href="#" className="w-10 h-10 rounded-lg bg-slate-800 hover:bg-primary flex items-center justify-center transition-colors">
-                <Linkedin className="w-5 h-5" />
-              </a>
-              <a href="#" className="w-10 h-10 rounded-lg bg-slate-800 hover:bg-gradient-to-br hover:from-pink-500 hover:to-orange-500 flex items-center justify-center transition-colors">
-                <Instagram className="w-5 h-5" />
-              </a>
-            </div>
           </div>
           
           {/* Product */}
@@ -47,17 +35,6 @@ export function Footer() {
               <li><Link href="#how-it-works" className="text-slate-400 hover:text-white transition-colors">How it Works</Link></li>
               <li><Link href="/pricing" className="text-slate-400 hover:text-white transition-colors">Pricing</Link></li>
               <li><Link href="/faq" className="text-slate-400 hover:text-white transition-colors">FAQ</Link></li>
-            </ul>
-          </div>
-          
-          {/* Company */}
-          <div>
-            <p className="font-semibold text-white mb-4">Company</p>
-            <ul className="space-y-3 text-sm">
-              <li><a href="#" className="text-slate-400 hover:text-white transition-colors">About Us</a></li>
-              <li><a href="#" className="text-slate-400 hover:text-white transition-colors">Blog</a></li>
-              <li><a href="#" className="text-slate-400 hover:text-white transition-colors">Careers</a></li>
-              <li><a href="#" className="text-slate-400 hover:text-white transition-colors">Contact</a></li>
             </ul>
           </div>
           

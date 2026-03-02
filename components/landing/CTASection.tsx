@@ -27,7 +27,7 @@ export function CTASection() {
           <br />into customers today
         </h2>
         <p className="text-xl text-white/90 mb-10 max-w-2xl mx-auto">
-          Join 2,500+ businesses using GrowProfile to automate their Instagram engagement and grow revenue.
+          Start automating your Instagram engagement today — turn every comment with your keyword into a personalized DM.
         </p>
 
         {/* Features */}
@@ -44,11 +44,6 @@ export function CTASection() {
           <Button asChild size="lg" className="bg-white text-primary hover:bg-white/90 text-lg px-10 shadow-2xl shadow-black/20 hover:-translate-y-0.5 transition-all">
             <Link href="/auth/signup" className="flex items-center gap-2">
               Get Started Free <ArrowRight className="w-5 h-5" />
-            </Link>
-          </Button>
-          <Button asChild size="lg" variant="outline" className="border-white/40 text-white hover:bg-white/10 text-lg px-10">
-            <Link href="#how-it-works">
-              Watch Demo
             </Link>
           </Button>
         </div>

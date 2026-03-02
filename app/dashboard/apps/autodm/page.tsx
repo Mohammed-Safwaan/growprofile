@@ -4,28 +4,16 @@ import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useRouter } from 'next/navigation'
 import {
-  Instagram, Zap, AlertCircle, CheckCircle2, Play, Pause,
-  Sparkles, MessageSquare, Hash, Send, Plus, Trash2,
-  RefreshCw, Eye, Loader2, Image as ImageIcon,
-  ArrowLeft, Mail, MessageCircle
+  Instagram, Zap, CheckCircle2, Play, Pause,
+  Sparkles, MessageSquare, Send, Plus, Trash2,
+  Eye, Loader2, Image as ImageIcon,
+  Mail, MessageCircle
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { CampaignWizard } from '@/components/autodm/CampaignWizard'
 
 // ─── Types ────────────────────────────────────────────────
-
-interface IgMedia {
-  id: string
-  caption?: string
-  media_type: string
-  media_url?: string
-  thumbnail_url?: string
-  permalink: string
-  timestamp: string
-  like_count?: number
-  comments_count?: number
-}
 
 interface CampaignMedia {
   id: string
@@ -54,7 +42,6 @@ interface Campaign {
   _count: { interactions: number; leads: number }
 }
 
-type CampaignTypeOption = 'COMMENT_DM' | 'DM_KEYWORD'
 type ViewMode = 'campaigns' | 'create' | 'edit'
 
 // ─── Main Component ───────────────────────────────────────
@@ -67,23 +54,10 @@ export default function AutoDMPage() {
   const [view, setView] = useState<ViewMode>('campaigns')
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [loading, setLoading] = useState(true)
-  const [igMedia, setIgMedia] = useState<IgMedia[]>([])
-  const [mediaLoading, setMediaLoading] = useState(false)
-  const [saving, setSaving] = useState(false)
   const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null)
 
   // Connected account
   const igAccount = user?.instagramAccounts?.[0]
-
-  // Form state
-  const [campaignType, setCampaignType] = useState<CampaignTypeOption>('COMMENT_DM')
-  const [campaignName, setCampaignName] = useState('')
-  const [keywords, setKeywords] = useState('')
-  const [dmMessage, setDmMessage] = useState('')
-  const [replyMessage, setReplyMessage] = useState('')
-  const [requireFollow, setRequireFollow] = useState(false)
-  const [selectedMediaIds, setSelectedMediaIds] = useState<Set<string>>(new Set())
-  const [campaignStatus, setCampaignStatus] = useState<'DRAFT' | 'ACTIVE'>('ACTIVE')
 
   // ─── Fetch campaigns ────────────────────────────────────
 
@@ -101,86 +75,9 @@ export default function AutoDMPage() {
     }
   }, [igAccount, authFetch])
 
-  // ─── Fetch IG media ─────────────────────────────────────
-
-  const fetchMedia = useCallback(async () => {
-    if (!igAccount) return
-    try {
-      setMediaLoading(true)
-      const res = await authFetch(`/api/instagram/media?accountId=${igAccount.id}&limit=25`)
-      const data = await res.json()
-      if (data.success) setIgMedia(data.media)
-    } catch (err) {
-      console.error('Failed to fetch media:', err)
-    } finally {
-      setMediaLoading(false)
-    }
-  }, [igAccount, authFetch])
-
   useEffect(() => {
     fetchCampaigns()
   }, [fetchCampaigns])
-
-  // ─── Create/Update campaign ─────────────────────────────
-
-  const handleSaveCampaign = async () => {
-    if (!igAccount) return
-    const keywordArray = keywords.split(',').map(k => k.trim()).filter(Boolean)
-
-    if (!campaignName || keywordArray.length === 0 || !dmMessage) {
-      alert('Please fill in campaign name, at least one keyword, and a DM message.')
-      return
-    }
-
-    setSaving(true)
-    try {
-      const payload = {
-        igAccountId: igAccount.id,
-        name: campaignName,
-        type: campaignType,
-        triggerKeywords: keywordArray,
-        replyMessage: campaignType === 'COMMENT_DM' ? (replyMessage || null) : null,
-        dmMessages: [{ text: dmMessage }],
-        requireFollow,
-        status: campaignStatus,
-        mediaIds: campaignType === 'COMMENT_DM'
-          ? Array.from(selectedMediaIds).map(igMediaId => {
-              const media = igMedia.find(m => m.id === igMediaId)
-              return {
-                igMediaId,
-                mediaUrl: media?.media_url || media?.thumbnail_url || null,
-                mediaType: media?.media_type || null,
-                caption: media?.caption || null,
-                permalink: media?.permalink || null,
-              }
-            })
-          : [],
-      }
-
-      const url = editingCampaign ? `/api/campaigns/${editingCampaign.id}` : '/api/campaigns'
-      const method = editingCampaign ? 'PATCH' : 'POST'
-
-      const res = await authFetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-
-      const data = await res.json()
-      if (data.success) {
-        resetForm()
-        setView('campaigns')
-        await fetchCampaigns()
-      } else {
-        alert(data.error || 'Failed to save campaign')
-      }
-    } catch (err) {
-      console.error('Save error:', err)
-      alert('Failed to save campaign')
-    } finally {
-      setSaving(false)
-    }
-  }
 
   // ─── Toggle campaign status ─────────────────────────────
 
@@ -216,45 +113,14 @@ export default function AutoDMPage() {
 
   const startEdit = (campaign: Campaign) => {
     setEditingCampaign(campaign)
-    setCampaignType((campaign.type as CampaignTypeOption) || 'COMMENT_DM')
-    setCampaignName(campaign.name)
-    setKeywords(campaign.triggerKeywords.join(', '))
-    setDmMessage(campaign.dmMessages?.[0]?.text || '')
-    setReplyMessage(campaign.replyMessage || '')
-    setRequireFollow(campaign.requireFollow)
-    setCampaignStatus(campaign.status as 'DRAFT' | 'ACTIVE')
-    setSelectedMediaIds(new Set(campaign.media.map(m => m.igMediaId)))
-    if ((campaign.type as CampaignTypeOption) !== 'DM_KEYWORD') fetchMedia()
     setView('edit')
   }
 
   // ─── Start creating ─────────────────────────────────────
 
   const startCreate = () => {
-    resetForm()
-    fetchMedia()
-    setView('create')
-  }
-
-  const resetForm = () => {
     setEditingCampaign(null)
-    setCampaignType('COMMENT_DM')
-    setCampaignName('')
-    setKeywords('')
-    setDmMessage('')
-    setReplyMessage('')
-    setRequireFollow(false)
-    setSelectedMediaIds(new Set())
-    setCampaignStatus('ACTIVE')
-  }
-
-  const toggleMediaSelection = (mediaId: string) => {
-    setSelectedMediaIds(prev => {
-      const next = new Set(prev)
-      if (next.has(mediaId)) next.delete(mediaId)
-      else next.add(mediaId)
-      return next
-    })
+    setView('create')
   }
 
   // ─── Not connected ──────────────────────────────────────
@@ -481,14 +347,24 @@ export default function AutoDMPage() {
                 {campaign.media.length > 0 && (
                   <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
                     {campaign.media.slice(0, 5).map((m) => (
-                      <div key={m.id} className="w-16 h-16 rounded-lg overflow-hidden flex-shrink-0 border border-border">
+                      <div key={m.id} className="relative w-16 h-16 rounded-lg overflow-hidden flex-shrink-0 border border-border">
                         {m.mediaUrl ? (
-                          <img src={m.mediaUrl} alt="" className="w-full h-full object-cover" />
-                        ) : (
-                          <div className="w-full h-full bg-muted flex items-center justify-center">
-                            <ImageIcon className="w-4 h-4 text-muted-foreground" />
-                          </div>
-                        )}
+                          <img
+                            src={m.mediaUrl}
+                            alt=""
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              const el = e.currentTarget
+                              el.style.display = 'none'
+                              el.nextElementSibling?.classList.remove('hidden')
+                            }}
+                          />
+                        ) : null}
+                        <div className={`w-full h-full bg-muted flex items-center justify-center ${m.mediaUrl ? 'hidden' : ''}`}>
+                          {m.mediaType === 'VIDEO'
+                            ? <span className="text-lg">🎬</span>
+                            : <ImageIcon className="w-4 h-4 text-muted-foreground" />}
+                        </div>
                       </div>
                     ))}
                     {campaign.media.length > 5 && (
@@ -533,327 +409,21 @@ export default function AutoDMPage() {
     )
   }
 
-  // ─── CREATE / EDIT VIEW ─────────────────────────────────
+  // ─── CREATE / EDIT VIEW (Wizard) ──────────────────────────
 
   return (
-    <div className="max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="mb-8">
-        <Button variant="ghost" className="gap-2 mb-4 -ml-2" onClick={() => { resetForm(); setView('campaigns') }}>
-          <ArrowLeft className="w-4 h-4" />
-          Back to Campaigns
-        </Button>
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center shadow-lg shadow-primary/25">
-            <Zap className="w-6 h-6 text-white" />
-          </div>
-          <div>
-            <h1 className="text-3xl font-bold text-foreground">
-              {editingCampaign ? 'Edit Campaign' : 'New Campaign'}
-            </h1>
-            <p className="text-muted-foreground">
-              {editingCampaign ? `Editing "${editingCampaign.name}"` : 'Set up your AutoDM automation'}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Campaign Type Selector */}
-      <div className="mb-8 p-6 rounded-2xl bg-card border border-border">
-        <h2 className="text-lg font-bold text-foreground mb-4">Campaign Type</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <button
-            onClick={() => { setCampaignType('COMMENT_DM'); if (igMedia.length === 0) fetchMedia() }}
-            className={`p-5 rounded-xl border-2 text-left transition-all ${
-              campaignType === 'COMMENT_DM'
-                ? 'border-primary bg-primary/5 shadow-lg shadow-primary/10'
-                : 'border-border hover:border-primary/30'
-            }`}
-          >
-            <div className="flex items-center gap-3 mb-2">
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                campaignType === 'COMMENT_DM'
-                  ? 'bg-gradient-to-br from-primary to-secondary'
-                  : 'bg-muted'
-              }`}>
-                <MessageCircle className={`w-5 h-5 ${campaignType === 'COMMENT_DM' ? 'text-white' : 'text-muted-foreground'}`} />
-              </div>
-              <div>
-                <p className="font-semibold text-foreground">Comment → DM</p>
-                <p className="text-xs text-muted-foreground">User comments on your post, gets a DM</p>
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              Requires Facebook Page linked to your Instagram account. Best for post engagement campaigns.
-            </p>
-          </button>
-
-          <button
-            onClick={() => setCampaignType('DM_KEYWORD')}
-            className={`p-5 rounded-xl border-2 text-left transition-all ${
-              campaignType === 'DM_KEYWORD'
-                ? 'border-primary bg-primary/5 shadow-lg shadow-primary/10'
-                : 'border-border hover:border-primary/30'
-            }`}
-          >
-            <div className="flex items-center gap-3 mb-2">
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                campaignType === 'DM_KEYWORD'
-                  ? 'bg-gradient-to-br from-primary to-secondary'
-                  : 'bg-muted'
-              }`}>
-                <Mail className={`w-5 h-5 ${campaignType === 'DM_KEYWORD' ? 'text-white' : 'text-muted-foreground'}`} />
-              </div>
-              <div>
-                <p className="font-semibold text-foreground">DM Keyword</p>
-                <p className="text-xs text-muted-foreground">User DMs a keyword, gets an auto-reply</p>
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              No Facebook Page required. Works with any Instagram Business/Creator account.
-            </p>
-          </button>
-        </div>
-      </div>
-
-      <div className={`grid grid-cols-1 ${campaignType === 'COMMENT_DM' ? 'lg:grid-cols-3' : 'lg:grid-cols-2'} gap-8`}>
-        {/* Left: Post Selector (only for COMMENT_DM) */}
-        {campaignType === 'COMMENT_DM' && (
-        <div className="lg:col-span-2 space-y-6">
-          {/* Post Selection */}
-          <div className="p-6 rounded-2xl bg-card border border-border">
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h2 className="text-xl font-bold text-foreground mb-1">Select Posts</h2>
-                <p className="text-sm text-muted-foreground">
-                  Choose which posts trigger AutoDM (leave empty = all posts)
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                {selectedMediaIds.size > 0 && (
-                  <Badge className="bg-primary/10 text-primary">{selectedMediaIds.size} selected</Badge>
-                )}
-                <Button variant="outline" size="sm" className="gap-1.5 rounded-lg" onClick={fetchMedia} disabled={mediaLoading}>
-                  <RefreshCw className={`w-3.5 h-3.5 ${mediaLoading ? 'animate-spin' : ''}`} />
-                  Refresh
-                </Button>
-              </div>
-            </div>
-
-            {mediaLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="w-8 h-8 animate-spin text-primary" />
-                <span className="ml-3 text-muted-foreground">Loading your posts...</span>
-              </div>
-            ) : igMedia.length === 0 ? (
-              <div className="text-center py-12">
-                <ImageIcon className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
-                <p className="text-muted-foreground">No posts found. Make sure your Instagram account has posts.</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                {igMedia.map((media) => {
-                  const isSelected = selectedMediaIds.has(media.id)
-                  const thumbUrl = media.media_type === 'VIDEO'
-                    ? media.thumbnail_url
-                    : media.media_url
-
-                  return (
-                    <div
-                      key={media.id}
-                      onClick={() => toggleMediaSelection(media.id)}
-                      className={`relative rounded-2xl overflow-hidden cursor-pointer border-2 transition-all duration-300 group ${
-                        isSelected
-                          ? 'border-primary shadow-lg shadow-primary/20 scale-[1.02]'
-                          : 'border-transparent hover:border-primary/30'
-                      }`}
-                    >
-                      {thumbUrl ? (
-                        <img
-                          src={thumbUrl}
-                          alt={media.caption?.substring(0, 30) || 'Post'}
-                          className="w-full h-44 object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-44 bg-muted flex items-center justify-center">
-                          <ImageIcon className="w-8 h-8 text-muted-foreground" />
-                        </div>
-                      )}
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent flex flex-col justify-end p-3">
-                        <div className="flex justify-between text-xs text-white gap-2">
-                          <span>❤️ {(media.like_count || 0).toLocaleString()}</span>
-                          <span>💬 {(media.comments_count || 0).toLocaleString()}</span>
-                        </div>
-                        {media.caption && (
-                          <p className="text-[10px] text-white/70 mt-1 truncate">{media.caption}</p>
-                        )}
-                      </div>
-                      {isSelected && (
-                        <div className="absolute top-3 right-3 w-7 h-7 bg-primary rounded-full flex items-center justify-center shadow-lg">
-                          <CheckCircle2 className="w-4 h-4 text-white" />
-                        </div>
-                      )}
-                      <div className={`absolute inset-0 bg-primary/10 opacity-0 group-hover:opacity-100 transition-opacity ${
-                        isSelected ? 'opacity-100' : ''
-                      }`} />
-                      {media.media_type === 'VIDEO' && (
-                        <Badge className="absolute top-3 left-3 bg-black/60 text-white text-[10px]">VIDEO</Badge>
-                      )}
-                      {media.media_type === 'CAROUSEL_ALBUM' && (
-                        <Badge className="absolute top-3 left-3 bg-black/60 text-white text-[10px]">CAROUSEL</Badge>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-        )}
-
-        {/* Right: Campaign Setup */}
-        <div className="space-y-6">
-          <div className="p-6 rounded-2xl bg-card border border-border">
-            <h3 className="font-bold text-foreground mb-6 flex items-center gap-2">
-              <Zap className="w-5 h-5 text-primary" />
-              Campaign Setup
-            </h3>
-
-            <div className="space-y-5">
-              {/* Campaign Name */}
-              <div>
-                <label className="text-sm font-medium text-foreground mb-2 block">Campaign Name</label>
-                <Input
-                  value={campaignName}
-                  onChange={(e) => setCampaignName(e.target.value)}
-                  placeholder="e.g., Price Inquiry AutoDM"
-                  className="rounded-xl"
-                />
-              </div>
-
-              {/* Trigger Keywords */}
-              <div>
-                <label className="flex items-center gap-2 text-sm font-medium text-foreground mb-2">
-                  <Hash className="w-4 h-4 text-muted-foreground" />
-                  Trigger Keywords
-                </label>
-                <Input
-                  value={keywords}
-                  onChange={(e) => setKeywords(e.target.value)}
-                  placeholder={campaignType === 'DM_KEYWORD' ? 'info, pricing, link' : 'price, info, link'}
-                  className="rounded-xl"
-                />
-                <p className="text-xs text-muted-foreground mt-1.5">
-                  {campaignType === 'DM_KEYWORD'
-                    ? 'When someone DMs one of these keywords, they get your auto-reply'
-                    : 'Separate keywords with commas'}
-                </p>
-              </div>
-
-              {/* DM Message */}
-              <div>
-                <label className="flex items-center gap-2 text-sm font-medium text-foreground mb-2">
-                  <MessageSquare className="w-4 h-4 text-muted-foreground" />
-                  DM Message
-                </label>
-                <textarea
-                  value={dmMessage}
-                  onChange={(e) => setDmMessage(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl border border-input bg-background text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none h-28 transition-all text-sm"
-                  placeholder="Hey! 👋 Thanks for your interest! Here's the link you asked for: https://..."
-                />
-              </div>
-
-              {/* Public Reply (only for COMMENT_DM) */}
-              {campaignType === 'COMMENT_DM' && (
-              <div>
-                <label className="flex items-center gap-2 text-sm font-medium text-foreground mb-2">
-                  <Send className="w-4 h-4 text-muted-foreground" />
-                  Public Comment Reply (optional)
-                </label>
-                <Input
-                  value={replyMessage}
-                  onChange={(e) => setReplyMessage(e.target.value)}
-                  placeholder="Check your DMs! 📩"
-                  className="rounded-xl"
-                />
-                <p className="text-xs text-muted-foreground mt-1.5">Auto-reply visible on the comment thread</p>
-              </div>
-              )}
-
-              {/* Require Follow */}
-              <div className="flex items-center justify-between p-3 rounded-xl bg-muted/50">
-                <div>
-                  <p className="text-sm font-medium text-foreground">Require Follow</p>
-                  <p className="text-xs text-muted-foreground">Only send DM if they follow you</p>
-                </div>
-                <button
-                  onClick={() => setRequireFollow(!requireFollow)}
-                  className={`w-11 h-6 rounded-full transition-colors ${
-                    requireFollow ? 'bg-primary' : 'bg-muted-foreground/30'
-                  }`}
-                >
-                  <div className={`w-5 h-5 bg-white rounded-full shadow-md transition-transform ${
-                    requireFollow ? 'translate-x-[22px]' : 'translate-x-[2px]'
-                  }`} />
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Action Buttons */}
-          <div className="space-y-3">
-            <Button
-              className="w-full h-12 bg-gradient-to-r from-primary to-secondary hover:opacity-90 gap-2 rounded-xl shadow-lg shadow-primary/25 text-base"
-              onClick={handleSaveCampaign}
-              disabled={saving || !campaignName || !keywords || !dmMessage}
-            >
-              {saving ? (
-                <><Loader2 className="w-5 h-5 animate-spin" /> Saving...</>
-              ) : editingCampaign ? (
-                <><CheckCircle2 className="w-5 h-5" /> Update Campaign</>
-              ) : (
-                <><Play className="w-5 h-5" /> Launch Campaign</>
-              )}
-            </Button>
-            {!editingCampaign && (
-              <Button
-                variant="outline"
-                className="w-full h-11 gap-2 rounded-xl"
-                onClick={() => { setCampaignStatus('DRAFT'); handleSaveCampaign() }}
-                disabled={saving}
-              >
-                Save as Draft
-              </Button>
-            )}
-          </div>
-
-          {/* Preview Card */}
-          <div className="p-5 rounded-2xl bg-muted/50 border border-border">
-            <p className="text-xs font-medium text-muted-foreground mb-3">DM PREVIEW</p>
-            <div className="bg-card rounded-xl p-4 border border-border">
-              <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center flex-shrink-0">
-                  <Send className="w-4 h-4 text-white" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-foreground">
-                    {dmMessage || 'Your message will appear here...'}
-                  </p>
-                </div>
-              </div>
-            </div>
-            {replyMessage && campaignType === 'COMMENT_DM' && (
-              <>
-                <p className="text-xs font-medium text-muted-foreground mb-2 mt-4">PUBLIC REPLY PREVIEW</p>
-                <div className="bg-card rounded-xl p-3 border border-border">
-                  <p className="text-xs text-foreground">↳ {replyMessage}</p>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
+    <CampaignWizard
+      igAccount={igAccount}
+      editingCampaign={editingCampaign}
+      onSuccess={() => {
+        setEditingCampaign(null)
+        setView('campaigns')
+        fetchCampaigns()
+      }}
+      onCancel={() => {
+        setEditingCampaign(null)
+        setView('campaigns')
+      }}
+    />
   )
 }

@@ -1,36 +1,53 @@
 'use client'
 
-export default function UsagePage() {
-  const usage = [
-    {
-      name: 'DM Sends',
-      current: 2847,
-      limit: 10000,
-      unit: 'sends/month',
-      percentage: 28
-    },
-    {
-      name: 'Active Campaigns',
-      current: 3,
-      limit: null,
-      unit: 'campaigns',
-      percentage: 30
-    },
-    {
-      name: 'Account Connections',
-      current: 1,
-      limit: 1,
-      unit: 'accounts',
-      percentage: 100
-    }
-  ]
+import { useState, useEffect } from 'react'
+import { Loader2 } from 'lucide-react'
+import { useAuth } from '@/contexts/AuthContext'
 
-  const billingInfo = [
-    { label: 'Current Plan', value: 'Pro' },
-    { label: 'Billing Cycle', value: 'Monthly' },
-    { label: 'Next Billing Date', value: 'March 15, 2024' },
-    { label: 'Monthly Cost', value: '$29.00' }
-  ]
+interface UsageItem {
+  name: string
+  current: number
+  limit: number | null
+  unit: string
+  percentage: number | null
+}
+
+interface BillingItem {
+  label: string
+  value: string
+}
+
+export default function UsagePage() {
+  const { authFetch } = useAuth()
+  const [usage, setUsage] = useState<UsageItem[]>([])
+  const [billingInfo, setBillingInfo] = useState<BillingItem[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function fetchUsage() {
+      try {
+        const res = await authFetch('/api/dashboard/usage')
+        const data = await res.json()
+        if (data.success) {
+          setUsage(data.usage || [])
+          setBillingInfo(data.billingInfo || [])
+        }
+      } catch (err) {
+        console.error('Failed to load usage:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchUsage()
+  }, [authFetch])
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
 
   return (
     <div>
@@ -49,25 +66,29 @@ export default function UsagePage() {
             </div>
             <div className="mb-4">
               <div className="flex justify-between mb-2">
-                <span className="text-3xl font-bold text-foreground">{item.current}</span>
-                {item.limit && <span className="text-muted-foreground">/ {item.limit}</span>}
+                <span className="text-3xl font-bold text-foreground">{item.current.toLocaleString()}</span>
+                {item.limit && <span className="text-muted-foreground">/ {item.limit.toLocaleString()}</span>}
               </div>
-              <div className="w-full h-3 bg-secondary/30 rounded-full overflow-hidden">
-                <div
-                  className={`h-full rounded-full ${
-                    item.percentage > 80
-                      ? 'bg-accent'
-                      : item.percentage > 50
-                      ? 'bg-yellow-500'
-                      : 'bg-primary'
-                  }`}
-                  style={{ width: `${Math.min(item.percentage, 100)}%` }}
-                ></div>
-              </div>
+              {item.percentage !== null && (
+                <div className="w-full h-3 bg-secondary/30 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full ${
+                      item.percentage > 80
+                        ? 'bg-accent'
+                        : item.percentage > 50
+                        ? 'bg-yellow-500'
+                        : 'bg-primary'
+                    }`}
+                    style={{ width: `${Math.min(item.percentage, 100)}%` }}
+                  ></div>
+                </div>
+              )}
             </div>
-            <p className="text-xs text-muted-foreground">
-              {item.percentage}% of plan limit
-            </p>
+            {item.percentage !== null && (
+              <p className="text-xs text-muted-foreground">
+                {item.percentage}% of plan limit
+              </p>
+            )}
           </div>
         ))}
       </div>

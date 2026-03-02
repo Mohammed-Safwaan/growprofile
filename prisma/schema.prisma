@@ -107,6 +107,11 @@ enum WebhookEventStatus {
   FAILED
 }
 
+enum PaymentGateway {
+  STRIPE
+  RAZORPAY
+}
+
 // ─────────────────────────────────────────────
 // MODELS
 // ─────────────────────────────────────────────
@@ -154,6 +159,13 @@ model Plan {
   features        Json     @default("{}") // JSON blob of feature flags
   isActive        Boolean  @default(true) @map("is_active")
 
+  // Stripe (fill in after creating products/prices in Stripe Dashboard)
+  stripePriceId   String? @map("stripe_price_id")   // monthly price ID, e.g. price_xxx
+  stripeProductId String? @map("stripe_product_id")  // product ID, e.g. prod_xxx
+
+  // Razorpay (fill in after creating plans in Razorpay Dashboard)
+  razorpayPlanId  String? @map("razorpay_plan_id")
+
   // AutoDM scope
   allowReels    Boolean @default(true) @map("allow_reels")
   allowPosts    Boolean @default(true) @map("allow_posts")
@@ -179,6 +191,13 @@ model Subscription {
   planId String             @map("plan_id")
   plan   Plan               @relation(fields: [planId], references: [id])
   status SubscriptionStatus @default(ACTIVE)
+
+  // Gateway used for this subscription
+  gateway PaymentGateway? @default(STRIPE)
+
+  // Stripe
+  stripeSubscriptionId String? @unique @map("stripe_subscription_id")
+  stripeCustomerId     String? @map("stripe_customer_id")
 
   // Razorpay
   razorpaySubscriptionId String? @unique @map("razorpay_subscription_id")
@@ -206,14 +225,21 @@ model Payment {
   subscriptionId String?       @map("subscription_id")
   subscription   Subscription? @relation(fields: [subscriptionId], references: [id])
 
+  // Payment gateway
+  gateway PaymentGateway @default(STRIPE)
+
+  // Stripe
+  stripePaymentIntentId String? @unique @map("stripe_payment_intent_id")
+  stripeInvoiceId       String? @map("stripe_invoice_id")
+
   // Razorpay
   razorpayPaymentId String? @unique @map("razorpay_payment_id")
   razorpayOrderId   String? @map("razorpay_order_id")
 
-  amount   Decimal       @db.Decimal(10, 2)
-  currency String        @default("USD")
-  status   PaymentStatus @default(CREATED)
-  method   String? // card, upi, netbanking, etc.
+  amount   Decimal        @db.Decimal(10, 2)
+  currency String         @default("USD")
+  status   PaymentStatus  @default(CREATED)
+  method   String? // card, upi, netbanking, wallet, etc.
 
   paidAt DateTime? @map("paid_at")
 
