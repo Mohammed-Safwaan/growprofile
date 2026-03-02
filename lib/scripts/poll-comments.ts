@@ -123,7 +123,9 @@ async function main() {
       accessTokenTag: igAccount.accessTokenTag,
     })
 
-    // Prefer PAGE_ACCESS_TOKEN for comments API (required for proper access)
+    // Prefer PAGE_ACCESS_TOKEN for comments API when available,
+    // otherwise fall back to graph.instagram.com comments endpoint.
+    let commentApiMode: 'facebook' | 'instagram' = 'instagram'
     let apiToken = accessToken
     if (igAccount.pageAccessTokenEncrypted) {
       const pageToken = decryptToken({
@@ -133,8 +135,13 @@ async function main() {
       })
       if (pageToken) {
         apiToken = pageToken
+        commentApiMode = 'facebook'
         console.log(`  Using PAGE_ACCESS_TOKEN for API calls`)
+      } else {
+        console.log(`  Using IG user token via graph.instagram.com for comments`)
       }
+    } else {
+      console.log(`  Using IG user token via graph.instagram.com for comments`)
     }
 
     if (!apiToken) {
@@ -156,7 +163,7 @@ async function main() {
 
       let comments: IgComment[]
       try {
-        comments = await fetchMediaComments(media.igMediaId, apiToken)
+        comments = await fetchMediaComments(media.igMediaId, apiToken, 100, commentApiMode)
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err)
         console.log(`  ❌ Failed to fetch comments: ${errMsg}`)
@@ -169,6 +176,7 @@ async function main() {
         // Skip own comments (check both IG user ID and IG business ID)
         if (comment.from.id === igAccount.igUserId) continue
         if (igAccount.igBusinessId && comment.from.id === igAccount.igBusinessId) continue
+        if (comment.from.username && comment.from.username === igAccount.igUsername) continue
 
         const commentText = comment.text.toLowerCase().trim()
         const hasMatch = keywords.length === 0 ||
@@ -180,12 +188,32 @@ async function main() {
         const matchedKeyword = keywords.find((k: string) => commentText.includes(k)) || 'all'
         console.log(`  ✅ MATCH: @${comment.from.username} said "${comment.text}" (keyword: ${matchedKeyword})`)
 
-        // Check dedup
+        // Check dedup by commentId first to avoid reprocessing the same comment.
+        const existingByComment = await prisma.interaction.findFirst({
+          where: {
+            campaignId: campaign.id,
+            commentId: comment.id,
+            type: 'COMMENT',
+          },
+        })
+
+        if (existingByComment) {
+          console.log(`     ↳ Comment already processed (interaction ${existingByComment.id}) — skipping`)
+          totalDuplicates++
+          continue
+        }
+
+        // Check dedup by user status
+        // Keep one successful/active interaction per user+campaign,
+        // but allow retries when previous attempts failed (new comments only).
         const existing = await prisma.interaction.findFirst({
           where: {
             campaignId: campaign.id,
             igScopedUserId: comment.from.id,
             type: 'COMMENT',
+            status: {
+              in: ['PENDING', 'REPLIED', 'COMPLETED'],
+            },
           },
         })
 

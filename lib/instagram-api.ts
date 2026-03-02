@@ -6,6 +6,11 @@
 const IG_API_VERSION = 'v25.0'
 const IG_API_BASE = `https://graph.facebook.com/${IG_API_VERSION}`
 
+// IG Business Login messaging uses graph.instagram.com (NOT graph.facebook.com).
+// The instagram_business_manage_messages scope only works at this endpoint.
+const IG_MESSAGING_VERSION = 'v21.0'
+const IG_MESSAGING_BASE = `https://graph.instagram.com/${IG_MESSAGING_VERSION}`
+
 // ─── Types ────────────────────────────────────────────────
 
 export interface IgSendMessageResult {
@@ -25,13 +30,16 @@ export interface IgFollowerCheckResult {
 
 /**
  * Send a DM (text) to a user via the IG Messaging API.
- * Uses: POST /{ig-user-id}/messages
- * Requires: instagram_manage_messages permission + messaging scope
+ * Uses: POST /{ig-user-id}/messages at graph.instagram.com
+ * Requires: instagram_business_manage_messages scope (IG Business Login)
  *
- * @param igUserId - The IG user ID of the **page/business** (sender)
- * @param recipientId - The IGSID (Instagram Scoped ID) of the recipient
+ * IMPORTANT: Use the IG User Token from OAuth (NOT the Page Access Token).
+ * Page Access Tokens do NOT have messaging capability at this endpoint.
+ *
+ * @param igUserId - The IG user ID from IG Business Login OAuth (not igBusinessId)
+ * @param recipientId - The IGSID of the recipient (comment.from.id)
  * @param messageText - The text message to send
- * @param accessToken - The Page/IG access token
+ * @param accessToken - The IG User Token (from instagram_business_manage_messages OAuth)
  */
 export async function sendInstagramDM(
   igUserId: string,
@@ -39,18 +47,15 @@ export async function sendInstagramDM(
   messageText: string,
   accessToken: string
 ): Promise<IgSendMessageResult> {
-  const url = `${IG_API_BASE}/${igUserId}/messages`
+  const url = `${IG_MESSAGING_BASE}/${igUserId}/messages`
 
   const res = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${accessToken}`,
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      messaging_product: 'instagram',
       recipient: { id: recipientId },
       message: { text: messageText },
+      access_token: accessToken,
     }),
   })
 
@@ -101,8 +106,15 @@ export async function replyToComment(
 
 /**
  * Send a private (DM) reply to a comment.
- * Uses: POST /{ig-user-id}/messages with recipient.comment_id
- * Requires: The comment must be on the business account's own media.
+ * Uses: POST /{ig-user-id}/messages at graph.instagram.com with recipient.comment_id
+ * Requires: instagram_business_manage_messages scope (IG Business Login)
+ *
+ * IMPORTANT: Use the IG User Token from OAuth (NOT the Page Access Token).
+ *
+ * @param igUserId - The IG user ID from IG Business Login OAuth
+ * @param commentId - The comment ID to privately reply to
+ * @param messageText - The DM text
+ * @param accessToken - The IG User Token
  */
 export async function sendPrivateReply(
   igUserId: string,
@@ -110,18 +122,15 @@ export async function sendPrivateReply(
   messageText: string,
   accessToken: string
 ): Promise<IgSendMessageResult> {
-  const url = `${IG_API_BASE}/${igUserId}/messages`
+  const url = `${IG_MESSAGING_BASE}/${igUserId}/messages`
 
   const res = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${accessToken}`,
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      messaging_product: 'instagram',
       recipient: { comment_id: commentId },
       message: { text: messageText },
+      access_token: accessToken,
     }),
   })
 
@@ -207,6 +216,8 @@ export interface IgComment {
   timestamp: string
 }
 
+export type CommentApiMode = 'facebook' | 'instagram'
+
 /**
  * Fetch all comments on a media post.
  * Uses: GET /{media-id}/comments
@@ -219,10 +230,13 @@ export interface IgComment {
 export async function fetchMediaComments(
   mediaId: string,
   accessToken: string,
-  limit: number = 100
+  limit: number = 100,
+  mode: CommentApiMode = 'facebook'
 ): Promise<IgComment[]> {
   const allComments: IgComment[] = []
-  let url: string | null = `${IG_API_BASE}/${mediaId}/comments?fields=id,text,from,timestamp&limit=50&access_token=${accessToken}`
+  let url: string | null = mode === 'instagram'
+    ? `https://graph.instagram.com/${IG_MESSAGING_VERSION}/${mediaId}/comments?fields=id,text,username,timestamp,from&limit=50&access_token=${accessToken}`
+    : `${IG_API_BASE}/${mediaId}/comments?fields=id,text,from,timestamp&limit=50&access_token=${accessToken}`
 
   while (url && allComments.length < limit) {
     const res = await fetch(url)
@@ -233,7 +247,23 @@ export async function fetchMediaComments(
 
     const data = await res.json()
     if (data.data) {
-      allComments.push(...data.data)
+      const normalized = (data.data as Array<Record<string, unknown>>).map((comment) => {
+        const from = (comment.from as Record<string, unknown> | undefined) || undefined
+        const username = String(from?.username || comment.username || '')
+        const fallbackId = username ? `username:${username}` : `comment:${String(comment.id || '')}`
+
+        return {
+          id: String(comment.id || ''),
+          text: String(comment.text || ''),
+          timestamp: String(comment.timestamp || ''),
+          from: {
+            id: String(from?.id || fallbackId),
+            username,
+          },
+        } satisfies IgComment
+      })
+
+      allComments.push(...normalized)
     }
 
     // Follow pagination cursor

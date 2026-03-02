@@ -62,6 +62,21 @@ async function processComment(job: Job<WebhookJobData>) {
   const { webhookEventId, igAccountId, userId, event } = job.data
   const commentEvent = event as WebhookCommentEvent
 
+  const igAccount = await prisma.instagramAccount.findUnique({
+    where: { id: igAccountId },
+    select: { igUserId: true, igBusinessId: true },
+  })
+
+  if (!igAccount) {
+    await markEventFailed(webhookEventId, `IG account not found: ${igAccountId}`)
+    return
+  }
+
+  if (commentEvent.from.id === igAccount.igUserId || commentEvent.from.id === igAccount.igBusinessId) {
+    await markEventProcessed(webhookEventId, 'Own comment — skipped')
+    return
+  }
+
   console.log(`[WebhookWorker] Processing comment: "${commentEvent.text}" from ${commentEvent.from.username || commentEvent.from.id}`)
 
   // Find active COMMENT_DM campaigns for this IG account
@@ -100,12 +115,30 @@ async function processComment(job: Job<WebhookJobData>) {
 
     console.log(`[WebhookWorker] Keyword match! Campaign: ${campaign.name}`)
 
+    // Check if this exact comment was already processed (webhook retries, duplicates).
+    const existingByComment = await prisma.interaction.findFirst({
+      where: {
+        campaignId: campaign.id,
+        commentId: commentEvent.commentId,
+        type: 'COMMENT',
+      },
+    })
+
+    if (existingByComment) {
+      console.log(`[WebhookWorker] Comment ${commentEvent.commentId} already processed for campaign ${campaign.id}`)
+      continue
+    }
+
     // Check if we've already interacted with this user for this campaign
+    // Keep successful/active interactions unique, but allow retries after failures.
     const existingInteraction = await prisma.interaction.findFirst({
       where: {
         campaignId: campaign.id,
         igScopedUserId: commentEvent.from.id,
         type: 'COMMENT',
+        status: {
+          in: ['PENDING', 'REPLIED', 'COMPLETED'],
+        },
       },
     })
 
@@ -165,15 +198,24 @@ async function processComment(job: Job<WebhookJobData>) {
       }
     )
 
-    // Create lead entry
-    await prisma.lead.create({
-      data: {
-        userId,
+    // Create lead entry (if not exists)
+    const existingLead = await prisma.lead.findFirst({
+      where: {
         campaignId: campaign.id,
         igScopedUserId: commentEvent.from.id,
-        igUsername: commentEvent.from.username || null,
       },
     })
+
+    if (!existingLead) {
+      await prisma.lead.create({
+        data: {
+          userId,
+          campaignId: campaign.id,
+          igScopedUserId: commentEvent.from.id,
+          igUsername: commentEvent.from.username || null,
+        },
+      })
+    }
 
     console.log(`[WebhookWorker] Queued DM for interaction ${interaction.id}`)
   }
@@ -231,11 +273,15 @@ async function processMessage(job: Job<WebhookJobData>) {
     console.log(`[WebhookWorker] DM keyword match! Campaign: ${campaign.name}`)
 
     // Check for existing interaction
+    // Keep successful/active interactions unique, but allow retries after failures.
     const existingInteraction = await prisma.interaction.findFirst({
       where: {
         campaignId: campaign.id,
         igScopedUserId: messageEvent.senderId,
         type: 'DM_RECEIVED',
+        status: {
+          in: ['PENDING', 'REPLIED', 'COMPLETED'],
+        },
       },
     })
 
@@ -283,14 +329,23 @@ async function processMessage(job: Job<WebhookJobData>) {
       }
     )
 
-    // Create lead
-    await prisma.lead.create({
-      data: {
-        userId,
+    // Create lead (if not exists)
+    const existingLead = await prisma.lead.findFirst({
+      where: {
         campaignId: campaign.id,
         igScopedUserId: messageEvent.senderId,
       },
     })
+
+    if (!existingLead) {
+      await prisma.lead.create({
+        data: {
+          userId,
+          campaignId: campaign.id,
+          igScopedUserId: messageEvent.senderId,
+        },
+      })
+    }
   }
 
   await markEventProcessed(webhookEventId)

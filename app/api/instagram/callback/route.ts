@@ -32,14 +32,18 @@ async function exchangeForLongLivedToken(shortToken: string): Promise<{
 async function fetchIgProfile(
   accessToken: string
 ): Promise<{ id: string; username: string }> {
-  const url = `https://graph.instagram.com/v21.0/me?fields=user_id,username&access_token=${accessToken}`
+  // Use `id` (not `user_id`) — `id` is the OAuth-scoped IG user ID required
+  // by graph.instagram.com/{id}/messages for sending DMs.
+  // `user_id` returns the FB-side IG Business Account ID which does NOT work
+  // with graph.instagram.com messaging endpoints.
+  const url = `https://graph.instagram.com/v21.0/me?fields=id,username&access_token=${accessToken}`
   const res = await fetch(url)
   if (!res.ok) {
     const err = await res.text()
     throw new Error(`IG profile fetch failed: ${err}`)
   }
   const data = await res.json()
-  return { id: data.user_id || data.id, username: data.username }
+  return { id: data.id, username: data.username }
 }
 
 /**

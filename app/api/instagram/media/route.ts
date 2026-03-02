@@ -57,7 +57,9 @@ export const GET = withAuth(async (request: NextRequest, user: AuthUser) => {
       'comments_count',
     ].join(',')
 
-    // Use PAGE_ACCESS_TOKEN + igBusinessId if available, else fall back to IG token
+    // Prefer Page token + igBusinessId → graph.facebook.com (needed for full comments API)
+    // Fall back to IG user token → graph.instagram.com (works for accounts without a FB Page)
+    let apiBase: string
     let apiToken = accessToken
     let apiIgId = account.igUserId
 
@@ -70,12 +72,16 @@ export const GET = withAuth(async (request: NextRequest, user: AuthUser) => {
       if (pageToken) {
         apiToken = pageToken
         apiIgId = account.igBusinessId
+        apiBase = 'https://graph.facebook.com/v25.0'
+      } else {
+        apiBase = 'https://graph.instagram.com/v21.0'
       }
+    } else {
+      // No Page token — use IG user token with graph.instagram.com
+      apiBase = 'https://graph.instagram.com/v21.0'
     }
 
-    const url = new URL(
-      `https://graph.facebook.com/v25.0/${apiIgId}/media`
-    )
+    const url = new URL(`${apiBase}/${apiIgId}/media`)
     url.searchParams.set('fields', fields)
     url.searchParams.set('limit', String(limit))
     url.searchParams.set('access_token', apiToken)

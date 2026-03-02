@@ -108,11 +108,49 @@ async function incrementRateLimit(igAccountId: string) {
   ])
 }
 
-// ─── Get decrypted access token ───────────────────────────
-// Prefers PAGE_ACCESS_TOKEN (required for messaging/comments APIs).
-// Falls back to IG user token if page token is not available.
+// ─── Get decrypted tokens ─────────────────────────────────
+//
+// Instagram messaging (DMs + private replies) uses graph.instagram.com and
+// requires the IG User Token obtained via IG Business Login OAuth.
+//
+// Public comment replies use graph.facebook.com/{comment-id}/replies and
+// require the Page Access Token.
+//
+// These two tokens come from different OAuth flows and serve different endpoints.
 
-async function getAccessToken(igAccountId: string): Promise<string> {
+interface AccountTokens {
+  igUserToken: string        // For graph.instagram.com DMs (sendInstagramDM/sendPrivateReply)
+  pageToken: string | null   // For graph.facebook.com comment replies (replyToComment)
+  igUserId: string           // The IG user ID for graph.instagram.com
+  igBusinessId: string | null // The IG business ID for graph.facebook.com
+}
+
+type InteractionMetadata = Record<string, unknown>
+
+function toMetadata(value: unknown): InteractionMetadata {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as InteractionMetadata
+  }
+  return {}
+}
+
+async function getInteractionMetadata(interactionId: string): Promise<InteractionMetadata> {
+  const interaction = await prisma.interaction.findUnique({
+    where: { id: interactionId },
+    select: { metadata: true },
+  })
+  return toMetadata(interaction?.metadata)
+}
+
+async function mergeInteractionMetadata(interactionId: string, patch: InteractionMetadata) {
+  const current = await getInteractionMetadata(interactionId)
+  await prisma.interaction.update({
+    where: { id: interactionId },
+    data: { metadata: { ...current, ...patch } },
+  })
+}
+
+async function getAccountTokens(igAccountId: string): Promise<AccountTokens> {
   const account = await prisma.instagramAccount.findUnique({
     where: { id: igAccountId },
     select: {
@@ -132,33 +170,36 @@ async function getAccessToken(igAccountId: string): Promise<string> {
   if (!account) throw new Error(`IG account ${igAccountId} not found`)
   if (!account.isActive) throw new Error(`IG account ${igAccountId} is inactive`)
 
-  // Check IG token expiry
   if (account.tokenExpiresAt && new Date(account.tokenExpiresAt) < new Date()) {
     throw new Error(`IG account ${igAccountId} token has expired`)
   }
 
-  // Prefer PAGE_ACCESS_TOKEN (required for messaging/comments)
-  if (account.pageAccessTokenEncrypted) {
-    const pageToken = decryptToken({
-      accessTokenEncrypted: account.pageAccessTokenEncrypted,
-      accessTokenIv: account.pageAccessTokenIv,
-      accessTokenTag: account.pageAccessTokenTag,
-    })
-    if (pageToken) return pageToken
-  }
-
-  // Fall back to IG user token
-  const token = decryptToken({
+  // IG User Token — required for graph.instagram.com messaging
+  const igUserToken = decryptToken({
     accessTokenEncrypted: account.accessTokenEncrypted,
     accessTokenIv: account.accessTokenIv,
     accessTokenTag: account.accessTokenTag,
   })
 
-  if (!token) {
-    throw new Error(`IG account ${igAccountId} has no token or decryption failed`)
+  if (!igUserToken) {
+    throw new Error(`IG account ${igAccountId} has no IG user token — please reconnect the account`)
   }
 
-  return token
+  // Page Access Token — for graph.facebook.com public comment replies
+  const pageToken = account.pageAccessTokenEncrypted
+    ? decryptToken({
+        accessTokenEncrypted: account.pageAccessTokenEncrypted,
+        accessTokenIv: account.pageAccessTokenIv,
+        accessTokenTag: account.pageAccessTokenTag,
+      })
+    : null
+
+  return {
+    igUserToken,
+    pageToken,
+    igUserId: account.igUserId,
+    igBusinessId: account.igBusinessId ?? null,
+  }
 }
 
 // ─── Worker definition ────────────────────────────────────
@@ -236,40 +277,42 @@ const worker = new Worker<DmJobData>(
     } else {
       // ─── PRODUCTION: Send real DMs via Instagram API ─
 
-      // Get access token (only needed in production)
-      const accessToken = await getAccessToken(igAccountId)
+      // Get both tokens — igUserToken for DMs, pageToken for comment replies
+      const { igUserToken, pageToken, igUserId } = await getAccountTokens(igAccountId)
 
-      // Get IG user ID for API calls — prefer igBusinessId for messaging
-      const igAccount = await prisma.instagramAccount.findUnique({
-        where: { id: igAccountId },
-        select: { igUserId: true, igBusinessId: true },
-      })
-
-      if (!igAccount) throw new Error('IG account not found')
-
-      // Use igBusinessId (from Page) for messaging API calls if available
-      const apiIgId = igAccount.igBusinessId || igAccount.igUserId
+      const interactionMetadata = await getInteractionMetadata(interactionId)
 
       // First message: Send public comment reply if configured
+      // Uses Page Token at graph.facebook.com/{comment-id}/replies
       if (messageIndex === 0 && replyMessage && commentId) {
-        try {
-          await replyToComment(commentId, replyMessage, accessToken)
-          console.log(`[DmSender] Sent public comment reply to ${commentId}`)
-        } catch (err) {
-          // Non-fatal — continue with DM
-          console.warn(`[DmSender] Comment reply failed (non-fatal):`, err)
+        if (interactionMetadata.publicReplySent) {
+          console.log(`[DmSender] Public comment reply already sent for interaction ${interactionId} — skipping`)
+        } else {
+          try {
+            const replyResult = await replyToComment(commentId, replyMessage, pageToken || igUserToken)
+            console.log(`[DmSender] Sent public comment reply to ${commentId}`)
+            await mergeInteractionMetadata(interactionId, {
+              publicReplySent: true,
+              publicReplyId: replyResult.id,
+              publicReplyAt: new Date().toISOString(),
+            })
+          } catch (err) {
+            // Non-fatal — continue with DM
+            console.warn(`[DmSender] Comment reply failed (non-fatal):`, err)
+          }
         }
       }
 
-      // Send DM
+      // Send DM (private reply or direct DM)
+      // Uses IG User Token at graph.instagram.com/{ig-user-id}/messages
       try {
         if (messageIndex === 0 && commentId) {
           try {
             const result = await sendPrivateReply(
-              apiIgId,
+              igUserId,
               commentId,
               messageText,
-              accessToken
+              igUserToken
             )
             console.log(`[DmSender] Sent private reply (msg_id: ${result.message_id})`)
 
@@ -282,11 +325,20 @@ const worker = new Worker<DmJobData>(
             })
           } catch (privateReplyErr) {
             console.warn(`[DmSender] Private reply failed, falling back to direct DM:`, privateReplyErr)
+
+            const hasNumericRecipientId = /^\d+$/.test(recipientId)
+            if (!hasNumericRecipientId) {
+              throw new Error(
+                `Private reply failed and recipient ID is unavailable for direct DM (recipientId=${recipientId}). ` +
+                `Reconnect account with Page linkage or ensure commenter ID is available.`
+              )
+            }
+
             const result = await sendInstagramDM(
-              apiIgId,
+              igUserId,
               recipientId,
               messageText,
-              accessToken
+              igUserToken
             )
             console.log(`[DmSender] Sent direct DM (msg_id: ${result.message_id})`)
 
@@ -300,10 +352,10 @@ const worker = new Worker<DmJobData>(
           }
         } else {
           const result = await sendInstagramDM(
-            apiIgId,
+            igUserId,
             recipientId,
             messageText,
-            accessToken
+            igUserToken
           )
           console.log(`[DmSender] Sent DM ${messageIndex + 1}/${totalMessages} (msg_id: ${result.message_id})`)
 
@@ -325,14 +377,12 @@ const worker = new Worker<DmJobData>(
         // Update interaction as failed
         await prisma.interaction.update({
           where: { id: interactionId },
-          data: {
-            status: 'FAILED',
-            metadata: {
-              error: errMsg,
-              failedAt: new Date().toISOString(),
-              messageIndex,
-            },
-          },
+          data: { status: 'FAILED' },
+        })
+        await mergeInteractionMetadata(interactionId, {
+          error: errMsg,
+          failedAt: new Date().toISOString(),
+          messageIndex,
         })
 
         throw dmErr // Re-throw for BullMQ retry

@@ -79,6 +79,10 @@ export const POST = withAuth(async (request: NextRequest, user: AuthUser) => {
           accessTokenEncrypted: true,
           accessTokenIv: true,
           accessTokenTag: true,
+          pageAccessTokenEncrypted: true,
+          pageAccessTokenIv: true,
+          pageAccessTokenTag: true,
+          igBusinessId: true,
           isActive: true,
           tokenExpiresAt: true,
         },
@@ -138,6 +142,22 @@ export const POST = withAuth(async (request: NextRequest, user: AuthUser) => {
       continue
     }
 
+    // Prefer Page token for comments API when available,
+    // otherwise fall back to graph.instagram.com comments endpoint.
+    let commentApiMode: 'facebook' | 'instagram' = 'instagram'
+    let apiToken = accessToken
+    if (igAccount.pageAccessTokenEncrypted) {
+      const pageToken = decryptToken({
+        accessTokenEncrypted: igAccount.pageAccessTokenEncrypted,
+        accessTokenIv: igAccount.pageAccessTokenIv,
+        accessTokenTag: igAccount.pageAccessTokenTag,
+      })
+      if (pageToken) {
+        apiToken = pageToken
+        commentApiMode = 'facebook'
+      }
+    }
+
     // Get campaign media (if empty, we can't poll comments)
     if (campaign.media.length === 0) {
       campaignResult.errors.push('Campaign has no media configured — cannot poll comments')
@@ -153,7 +173,7 @@ export const POST = withAuth(async (request: NextRequest, user: AuthUser) => {
 
       let comments: IgComment[]
       try {
-        comments = await fetchMediaComments(media.igMediaId, accessToken)
+        comments = await fetchMediaComments(media.igMediaId, apiToken, 100, commentApiMode)
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err)
         campaignResult.errors.push(`Failed to fetch comments for media ${media.igMediaId}: ${errMsg}`)
@@ -165,6 +185,8 @@ export const POST = withAuth(async (request: NextRequest, user: AuthUser) => {
       for (const comment of comments) {
         // Skip comments from our own account
         if (comment.from.id === igAccount.igUserId) continue
+        if (igAccount.igBusinessId && comment.from.id === igAccount.igBusinessId) continue
+        if (comment.from.username && comment.from.username === igAccount.igUsername) continue
 
         const commentText = comment.text.toLowerCase().trim()
 
@@ -176,12 +198,30 @@ export const POST = withAuth(async (request: NextRequest, user: AuthUser) => {
 
         campaignResult.keywordMatches++
 
-        // Dedup: check if we already processed this comment for this campaign
+        // Dedup by commentId first to avoid reprocessing the same comment.
+        const existingByComment = await prisma.interaction.findFirst({
+          where: {
+            campaignId: campaign.id,
+            commentId: comment.id,
+            type: 'COMMENT',
+          },
+        })
+
+        if (existingByComment) {
+          campaignResult.duplicatesSkipped++
+          continue
+        }
+
+        // Dedup by user/status: keep successful/active interactions unique,
+        // but allow retries after failures (new comments only).
         const existingInteraction = await prisma.interaction.findFirst({
           where: {
             campaignId: campaign.id,
             igScopedUserId: comment.from.id,
             type: 'COMMENT',
+            status: {
+              in: ['PENDING', 'REPLIED', 'COMPLETED'],
+            },
           },
         })
 
