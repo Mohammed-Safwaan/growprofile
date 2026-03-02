@@ -7,7 +7,7 @@ import {
   Instagram, Zap, AlertCircle, CheckCircle2, Play, Pause,
   Sparkles, MessageSquare, Hash, Send, Plus, Trash2,
   RefreshCw, Eye, Loader2, Image as ImageIcon,
-  ArrowLeft
+  ArrowLeft, Mail, MessageCircle
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -54,6 +54,7 @@ interface Campaign {
   _count: { interactions: number; leads: number }
 }
 
+type CampaignTypeOption = 'COMMENT_DM' | 'DM_KEYWORD'
 type ViewMode = 'campaigns' | 'create' | 'edit'
 
 // ─── Main Component ───────────────────────────────────────
@@ -75,6 +76,7 @@ export default function AutoDMPage() {
   const igAccount = user?.instagramAccounts?.[0]
 
   // Form state
+  const [campaignType, setCampaignType] = useState<CampaignTypeOption>('COMMENT_DM')
   const [campaignName, setCampaignName] = useState('')
   const [keywords, setKeywords] = useState('')
   const [dmMessage, setDmMessage] = useState('')
@@ -135,21 +137,24 @@ export default function AutoDMPage() {
       const payload = {
         igAccountId: igAccount.id,
         name: campaignName,
+        type: campaignType,
         triggerKeywords: keywordArray,
-        replyMessage: replyMessage || null,
+        replyMessage: campaignType === 'COMMENT_DM' ? (replyMessage || null) : null,
         dmMessages: [{ text: dmMessage }],
         requireFollow,
         status: campaignStatus,
-        mediaIds: Array.from(selectedMediaIds).map(igMediaId => {
-          const media = igMedia.find(m => m.id === igMediaId)
-          return {
-            igMediaId,
-            mediaUrl: media?.media_url || media?.thumbnail_url || null,
-            mediaType: media?.media_type || null,
-            caption: media?.caption || null,
-            permalink: media?.permalink || null,
-          }
-        }),
+        mediaIds: campaignType === 'COMMENT_DM'
+          ? Array.from(selectedMediaIds).map(igMediaId => {
+              const media = igMedia.find(m => m.id === igMediaId)
+              return {
+                igMediaId,
+                mediaUrl: media?.media_url || media?.thumbnail_url || null,
+                mediaType: media?.media_type || null,
+                caption: media?.caption || null,
+                permalink: media?.permalink || null,
+              }
+            })
+          : [],
       }
 
       const url = editingCampaign ? `/api/campaigns/${editingCampaign.id}` : '/api/campaigns'
@@ -211,6 +216,7 @@ export default function AutoDMPage() {
 
   const startEdit = (campaign: Campaign) => {
     setEditingCampaign(campaign)
+    setCampaignType((campaign.type as CampaignTypeOption) || 'COMMENT_DM')
     setCampaignName(campaign.name)
     setKeywords(campaign.triggerKeywords.join(', '))
     setDmMessage(campaign.dmMessages?.[0]?.text || '')
@@ -218,7 +224,7 @@ export default function AutoDMPage() {
     setRequireFollow(campaign.requireFollow)
     setCampaignStatus(campaign.status as 'DRAFT' | 'ACTIVE')
     setSelectedMediaIds(new Set(campaign.media.map(m => m.igMediaId)))
-    fetchMedia()
+    if ((campaign.type as CampaignTypeOption) !== 'DM_KEYWORD') fetchMedia()
     setView('edit')
   }
 
@@ -232,6 +238,7 @@ export default function AutoDMPage() {
 
   const resetForm = () => {
     setEditingCampaign(null)
+    setCampaignType('COMMENT_DM')
     setCampaignName('')
     setKeywords('')
     setDmMessage('')
@@ -287,7 +294,7 @@ export default function AutoDMPage() {
             </div>
             <div>
               <h1 className="text-3xl font-bold text-foreground">AutoDM</h1>
-              <p className="text-muted-foreground">Automate DM responses when users comment on your posts</p>
+              <p className="text-muted-foreground">Automate DM responses from comments or incoming DMs</p>
             </div>
           </div>
           <Button
@@ -338,7 +345,7 @@ export default function AutoDMPage() {
             </div>
             <h3 className="text-xl font-bold text-foreground mb-2">No campaigns yet</h3>
             <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-              Create your first AutoDM campaign to automatically respond when users comment specific keywords on your posts.
+              Create your first AutoDM campaign to automatically respond when users comment keywords on your posts or DM you a keyword.
             </p>
             <Button onClick={startCreate} className="bg-gradient-to-r from-primary to-secondary hover:opacity-90 gap-2">
               <Plus className="w-4 h-4" />
@@ -357,8 +364,8 @@ export default function AutoDMPage() {
                     <span className="text-sm font-bold text-primary">1</span>
                   </div>
                   <div>
-                    <p className="font-medium text-foreground text-sm">User Comments</p>
-                    <p className="text-xs text-muted-foreground">Someone comments your keyword on your post</p>
+                    <p className="font-medium text-foreground text-sm">User Comments or DMs</p>
+                    <p className="text-xs text-muted-foreground">Someone comments your keyword or DMs it to you</p>
                   </div>
                 </div>
                 <div className="flex gap-3">
@@ -410,14 +417,23 @@ export default function AutoDMPage() {
                         {campaign.name}
                       </h3>
                       <div className="flex items-center gap-2 flex-wrap">
+                        <Badge variant="outline" className="text-xs gap-1">
+                          {campaign.type === 'DM_KEYWORD' ? (
+                            <><Mail className="w-3 h-3" />DM Keyword</>
+                          ) : (
+                            <><MessageCircle className="w-3 h-3" />Comment DM</>
+                          )}
+                        </Badge>
                         {campaign.triggerKeywords.map((kw) => (
                           <Badge key={kw} variant="secondary" className="bg-primary/10 text-primary text-xs">
                             #{kw}
                           </Badge>
                         ))}
-                        <span className="text-xs text-muted-foreground">
-                          · {campaign.media.length > 0 ? `${campaign.media.length} post(s)` : 'All posts'}
-                        </span>
+                        {campaign.type !== 'DM_KEYWORD' && (
+                          <span className="text-xs text-muted-foreground">
+                            · {campaign.media.length > 0 ? `${campaign.media.length} post(s)` : 'All posts'}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -542,8 +558,67 @@ export default function AutoDMPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Left: Post Selector */}
+      {/* Campaign Type Selector */}
+      <div className="mb-8 p-6 rounded-2xl bg-card border border-border">
+        <h2 className="text-lg font-bold text-foreground mb-4">Campaign Type</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <button
+            onClick={() => { setCampaignType('COMMENT_DM'); if (igMedia.length === 0) fetchMedia() }}
+            className={`p-5 rounded-xl border-2 text-left transition-all ${
+              campaignType === 'COMMENT_DM'
+                ? 'border-primary bg-primary/5 shadow-lg shadow-primary/10'
+                : 'border-border hover:border-primary/30'
+            }`}
+          >
+            <div className="flex items-center gap-3 mb-2">
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                campaignType === 'COMMENT_DM'
+                  ? 'bg-gradient-to-br from-primary to-secondary'
+                  : 'bg-muted'
+              }`}>
+                <MessageCircle className={`w-5 h-5 ${campaignType === 'COMMENT_DM' ? 'text-white' : 'text-muted-foreground'}`} />
+              </div>
+              <div>
+                <p className="font-semibold text-foreground">Comment → DM</p>
+                <p className="text-xs text-muted-foreground">User comments on your post, gets a DM</p>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">
+              Requires Facebook Page linked to your Instagram account. Best for post engagement campaigns.
+            </p>
+          </button>
+
+          <button
+            onClick={() => setCampaignType('DM_KEYWORD')}
+            className={`p-5 rounded-xl border-2 text-left transition-all ${
+              campaignType === 'DM_KEYWORD'
+                ? 'border-primary bg-primary/5 shadow-lg shadow-primary/10'
+                : 'border-border hover:border-primary/30'
+            }`}
+          >
+            <div className="flex items-center gap-3 mb-2">
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                campaignType === 'DM_KEYWORD'
+                  ? 'bg-gradient-to-br from-primary to-secondary'
+                  : 'bg-muted'
+              }`}>
+                <Mail className={`w-5 h-5 ${campaignType === 'DM_KEYWORD' ? 'text-white' : 'text-muted-foreground'}`} />
+              </div>
+              <div>
+                <p className="font-semibold text-foreground">DM Keyword</p>
+                <p className="text-xs text-muted-foreground">User DMs a keyword, gets an auto-reply</p>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">
+              No Facebook Page required. Works with any Instagram Business/Creator account.
+            </p>
+          </button>
+        </div>
+      </div>
+
+      <div className={`grid grid-cols-1 ${campaignType === 'COMMENT_DM' ? 'lg:grid-cols-3' : 'lg:grid-cols-2'} gap-8`}>
+        {/* Left: Post Selector (only for COMMENT_DM) */}
+        {campaignType === 'COMMENT_DM' && (
         <div className="lg:col-span-2 space-y-6">
           {/* Post Selection */}
           <div className="p-6 rounded-2xl bg-card border border-border">
@@ -634,6 +709,7 @@ export default function AutoDMPage() {
             )}
           </div>
         </div>
+        )}
 
         {/* Right: Campaign Setup */}
         <div className="space-y-6">
@@ -664,10 +740,14 @@ export default function AutoDMPage() {
                 <Input
                   value={keywords}
                   onChange={(e) => setKeywords(e.target.value)}
-                  placeholder="price, info, link"
+                  placeholder={campaignType === 'DM_KEYWORD' ? 'info, pricing, link' : 'price, info, link'}
                   className="rounded-xl"
                 />
-                <p className="text-xs text-muted-foreground mt-1.5">Separate keywords with commas</p>
+                <p className="text-xs text-muted-foreground mt-1.5">
+                  {campaignType === 'DM_KEYWORD'
+                    ? 'When someone DMs one of these keywords, they get your auto-reply'
+                    : 'Separate keywords with commas'}
+                </p>
               </div>
 
               {/* DM Message */}
@@ -684,7 +764,8 @@ export default function AutoDMPage() {
                 />
               </div>
 
-              {/* Public Reply */}
+              {/* Public Reply (only for COMMENT_DM) */}
+              {campaignType === 'COMMENT_DM' && (
               <div>
                 <label className="flex items-center gap-2 text-sm font-medium text-foreground mb-2">
                   <Send className="w-4 h-4 text-muted-foreground" />
@@ -698,6 +779,7 @@ export default function AutoDMPage() {
                 />
                 <p className="text-xs text-muted-foreground mt-1.5">Auto-reply visible on the comment thread</p>
               </div>
+              )}
 
               {/* Require Follow */}
               <div className="flex items-center justify-between p-3 rounded-xl bg-muted/50">
@@ -761,7 +843,7 @@ export default function AutoDMPage() {
                 </div>
               </div>
             </div>
-            {replyMessage && (
+            {replyMessage && campaignType === 'COMMENT_DM' && (
               <>
                 <p className="text-xs font-medium text-muted-foreground mb-2 mt-4">PUBLIC REPLY PREVIEW</p>
                 <div className="bg-card rounded-xl p-3 border border-border">

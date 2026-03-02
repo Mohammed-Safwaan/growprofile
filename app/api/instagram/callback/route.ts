@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import { encryptToken } from '@/lib/encryption'
+import { subscribeToWebhooks } from '@/lib/instagram-api'
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000'
 const GRAPH_BASE = 'https://graph.facebook.com/v25.0'
@@ -300,6 +301,23 @@ export async function GET(request: NextRequest) {
       `[IG Callback] ✅ Stored IG account @${igUsername} (${igUserId}) for user ${userId}` +
       (pageId ? `, Page ${pageId}, IG Biz ${igBusinessId}` : ', NO page token')
     )
+
+    // ─── Step 7: Subscribe to webhooks (comments + messages) ─
+    try {
+      const subscribed = await subscribeToWebhooks(igUserId, igAccessToken)
+      if (subscribed) {
+        await prisma.instagramAccount.update({
+          where: { id: igAccount.id },
+          data: { subscribedWebhooks: true },
+        })
+        console.log(`[IG Callback] ✅ Webhook subscription active for @${igUsername}`)
+      } else {
+        console.warn(`[IG Callback] ⚠️ Webhook subscription failed for @${igUsername} — will need manual setup`)
+      }
+    } catch (webhookErr) {
+      // Non-fatal — the account is still connected
+      console.error('[IG Callback] Webhook subscription error (non-fatal):', webhookErr)
+    }
 
     // ─── Redirect to dashboard with success ───────────────
     const redirectUrl = new URL('/dashboard/account', FRONTEND_URL)

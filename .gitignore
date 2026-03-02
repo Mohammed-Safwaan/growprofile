@@ -6,3 +6,4 @@ node_modules
 
 /lib/generated/prisma
 .next
+tsconfig.tsbuildinfo
